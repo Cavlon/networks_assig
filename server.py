@@ -1,4 +1,3 @@
-from audioop import add
 import socket
 import sys
 from threading import Thread
@@ -7,21 +6,31 @@ from threading import Thread
 PORT = int(sys.argv[1])  # Port to listen on (non-privileged ports are > 1023)
 all_conns = []
 
-def on_client_connect(conn, addr, name):
-    while True:
-        data = conn.recv(1024).decode()
-        print(f'received>> {data}')
-        if data:
-            print(f'sending data back to {name} at {addr}')
-            message = data.upper()
-            conn.sendall(message.encode())      
-        else:
-            print('no data from', addr)
-            break
-    leaveMessage = name + ' has left'
+def broadcast(message):
     for connection in all_conns:
-        connection.sendall(leaveMessage.encode())
+        connection.sendall(message.encode())
+
+def on_client_connect(conn, addr, name):
+    leaveMessage = name + ' has left'
+    while True:
+        try:
+            data = conn.recv(1024).decode()
+        except socket.error:
+            print(f'Disconnection by {name} from {addr}')
+            all_conns.remove(conn)
+            broadcast(leaveMessage)
+            conn.close()
+            return
+        print(f'received>> {data}')
+        if data == '/exit':
+            break
+        print(f'sending data back to {name} at {addr}')
+        message = data.upper()
+        conn.sendall(message.encode()) 
+    print(f'Disconnection by {name} from {addr}') 
+    broadcast(leaveMessage)
     all_conns.remove(conn)
+    conn.sendall('/exit'.encode())
     conn.close()
 
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
