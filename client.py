@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import socket
 import sys
 from threading import Thread
@@ -23,20 +21,27 @@ def connect():
 
 def sender(s):
     while True:
-        message = input('\nWrite your message: ')
-        if message == '/exit':
+        message = input('Write your message: ')
+        try:
             s.sendall(message.encode())
+        except socket.error:
             break
-        s.sendall(message.encode())
+        if message == '/exit':
+            break
     return
 
 def receiver(s):
     global end
     while end == False:
-        data = s.recv(1024).decode()
+        try:
+            data = s.recv(1024).decode()
+        except socket.error:
+            print('\n>>Disconnected from server')
+            break
+
         if data == '/exit':
             break
-        print(f'\nreceived>> {data}')
+        print(f'\n{data}')
     return
 
 if __name__ == "__main__":

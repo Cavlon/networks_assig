@@ -3,7 +3,7 @@ import sys
 from threading import Thread
 
 
-PORT = int(sys.argv[1])  # Port to listen on (non-privileged ports are > 1023)
+PORT = int(sys.argv[1])
 all_conns = []
 all_addr = []
 all_names = []
@@ -16,7 +16,7 @@ def broadcast(message, exclude=None):
         connection.sendall(message.encode())
 
 def disconnect(conn, addr, name):
-    leaveMessage = name + ' has left'
+    leaveMessage = '>>' + name + ' has left'
     print(f'Disconnection by {name} from {addr}')
     all_conns.remove(conn)
     all_addr.remove(addr)
@@ -24,8 +24,8 @@ def disconnect(conn, addr, name):
     broadcast(leaveMessage)
 
 def on_client_connect(conn, addr, name):
-    unicast = False
     targetconn = None
+    ind = 0
     while True:
         try:
             data = conn.recv(1024).decode()
@@ -37,23 +37,27 @@ def on_client_connect(conn, addr, name):
         print(f'received>> {data}')
         if data == '/exit':
             break
+
         elif data.startswith('/uni'):
             try:
                 params = data.split()
                 targetaddr = (params[1], int(params[2]))
+                if targetaddr == addr:
+                    conn.sendall("You can't send messages to yourself".encode())
+                    continue
                 ind = all_addr.index(targetaddr)
                 targetconn = all_conns[ind]
+                conn.sendall(f'Directly Connected to {all_names[ind]}'.encode())
             except ValueError:
                 conn.sendall('Invalid command'.encode())
-                continue
             except IndexError:
                 conn.sendall('Invalid command'.encode())
-                continue
-            unicast = True
             continue
+
         elif data == '/broad':
-            unicast = False
+            targetconn = None
             continue
+
         elif data == '/members':
             message = 'List of members and their ports:\n'
             for i in range(len(all_conns)):
@@ -61,13 +65,16 @@ def on_client_connect(conn, addr, name):
             conn.sendall(message.encode()) 
             continue
 
-        if unicast:
-            print(f'sending data back to {name} at {addr}')
+        if targetconn:
+            print(f'sending data to {all_names[ind]} at {all_addr[ind]}')
+            data = f'{name} (whisper)>>' + data
             targetconn.sendall(data.encode()) 
         else:
+            print(f'sending data back to everyone')
+            data = f'{name}>>' + data
             broadcast(data, conn)
 
-    conn.sendall(f'Goodbye {name}'.encode())
+    conn.sendall(f'>>Goodbye {name}'.encode())
     disconnect(conn, addr, name)
 
     conn.sendall('/exit'.encode())
@@ -84,9 +91,9 @@ while True:
     name = conn.recv(1024).decode()
 
     print(f"Connected by {name} from {addr}")
-    conn.sendall(f'Welcome {name}!'.encode())
+    conn.sendall(f'>>Welcome {name}!'.encode())
 
-    welcMessage = name + ' has joined'
+    welcMessage = '>>' + name + ' has joined'
     for connection in all_conns:
         connection.sendall(welcMessage.encode())
 
