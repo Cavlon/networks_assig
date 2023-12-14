@@ -1,6 +1,9 @@
 import socket
 import sys
+import os
 from threading import Thread
+
+BUFFER = 4096
 
 def connect():
     USER = sys.argv[1] # The client's name
@@ -16,7 +19,7 @@ def connect():
     # Separate the sending and receiving functionality with a new thread
     send = Thread(target=sender, args=(s,))
     send.start()
-    receiver(s)
+    receiver(s, USER)
     send.join()
 
     # Once both the receiver and sender functions end, close the socket
@@ -33,29 +36,55 @@ def sender(s):
         except socket.error:
             # Safely exit if there was a forceful disconnection
             break
-        
+
         # End sending functionality if client exits
         if message == '/exit':
             break
     return
 
-def receiver(s):
+def receiver(s, USER):
+    f = None
     # Keep receiving messages until an error or notified of an exit
     while True:
         try:
-            # Receive a message from the server
-            data = s.recv(1024).decode()
+            
+            bytes_read = s.recv(BUFFER)
+
+            if f:   # If in download mode
+                if bytes_read.endswith('</d>'.encode()):    # Exit download mode if the end download flag is found 
+                    f.close()
+                    f = None
+                    continue
+
+                f.write(bytes_read)
+
+            else:   # If in message mode
+                data = bytes_read.decode()
+
+                # End receiving functionality if client exits
+                if data == '/exit':
+                    break
+
+                # Enter download mode if the download flag is found
+                if data.startswith('<d>'):
+                    # Find the target file name
+                    file = data.split()[1]
+                    print(f'>>Downloading {file}')
+
+                    # Create the client download folder if it doesn't already exist
+                    path = os.path.join('.', USER)
+                    if not os.path.exists(path):
+                        os.mkdir(path)
+
+                    # Setup writing to the file
+                    f = open(os.path.join(path, file), 'wb')
+                    continue
+                print(f'{data}')
 
         except socket.error:
             # Safely exit if there was a forceful disconnection
             print('\n>>Disconnected from server')
             break
-
-        # End receiving functionality if client exits
-        if data == '/exit':
-            break
-
-        print(f'\n{data}')
     return
 
 if __name__ == "__main__":

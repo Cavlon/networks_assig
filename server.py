@@ -1,8 +1,9 @@
 import socket
 import sys
+import os
 from threading import Thread
 
-
+BUFFER = 4096
 PORT = int(sys.argv[1])
 # Holds the address, connection and name of each connected client
 client_info = dict()
@@ -24,6 +25,42 @@ def disconnect(addr):
     # Sends a leave message to all other clients
     broadcast(leaveMessage)
 
+# Lists all the files in the download folder
+def list_files(addr):
+    path = './download'
+    # Retrieves all items in the folder
+    contents = os.listdir(path)
+    message = 'List of downloadable files:\n'
+
+    # Only lists the files
+    for item in contents:
+        if os.path.isfile(os.path.join(path, item)):
+            message += f'{item}\n'
+
+    client_info[addr][0].sendall(message.encode())
+
+# Sends a file from the download folder to a client
+def download(addr, filename):
+    conn = client_info[addr][0]
+    print('Started Sending Data')
+
+    # Flag for starting a download
+    conn.sendall(f'<d> {filename}'.encode())
+
+    # Open the file and progrssively send its data until there is none left
+    with open(os.path.join('./download/', filename), "rb") as f:
+        while True:
+            data = f.read(BUFFER)
+            conn.sendall(data)
+
+            # Once there is no more data left to send, end the transfer
+            if not data:
+                break
+
+    # Flag for the end of a download
+    conn.sendall(f'</d>'.encode())
+    print('Finished Sending Data')
+
 def active_client(addr):
     targetaddr = None
     conn = client_info[addr][0]
@@ -34,7 +71,7 @@ def active_client(addr):
 
         try:
             # Wait for a message from the client
-            data = conn.recv(1024).decode()
+            data = conn.recv(BUFFER).decode()
 
         #In case of forceful disconnection
         except socket.error:
@@ -52,6 +89,7 @@ def active_client(addr):
         if data.startswith('/uni'):
             try:
                 if len(client_info) > 1:
+                    # Retrieve the arguments from the command
                     params = data.split()
                     temp = (params[1], int(params[2]))
 
@@ -70,6 +108,23 @@ def active_client(addr):
                 conn.sendall("Address doesn't exist".encode())
             continue
 
+        if data.startswith('/download'):
+            try:  
+                # Retrieve the arguments from the command 
+                params = data.split()
+                file = params[1]
+
+                # Checks if the specified file exists in the download folder
+                if not os.path.exists(os.path.join('./download/', file)):
+                    conn.sendall("File doesn't exist".encode())
+                    continue
+
+                download(addr, file)
+                
+            except IndexError:  # If there are too little parameters
+                conn.sendall('Invalid command'.encode())
+            continue
+
         # Client requests to broadcast
         if data == '/broad':
             targetaddr = None
@@ -83,6 +138,10 @@ def active_client(addr):
                 message += f'{client_info[client][1]} at address {client}\n'
 
             conn.sendall(message.encode()) 
+            continue
+
+        if data == '/files':
+            list_files(addr)
             continue
 
         # Unicast to the selected target if it still exists
@@ -109,6 +168,12 @@ def active_client(addr):
     conn.close()
 
 def init():
+    # Creates the download folder if it doesn't already exist
+    path = './download'
+    if not os.path.exists(path):
+        os.mkdir(path)
+        print('Created Download Folder')
+
     # Create a socket and bind the address info
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.bind(('', PORT))
@@ -120,7 +185,7 @@ def init():
 
         # Extract and store client information from the new connection
         conn, addr = s.accept()
-        name = conn.recv(1024).decode()
+        name = conn.recv(BUFFER).decode()
         info = (conn, name)
 
         # Notify of the successful connection
