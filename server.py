@@ -2,11 +2,21 @@ import socket
 import sys
 import os
 from threading import Thread
+from datetime import datetime
 
 BUFFER = 4096
 PORT = int(sys.argv[1])
 # Holds the address, connection and name of each connected client
 client_info = dict()
+
+def get_time():
+    return datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+
+def logger(message):
+    entry = f'[{get_time()}] {message}\n'
+    print(entry)
+    with open('server.log', 'a') as log:
+        log.write(entry)
 
 # Send a message to every connected client
 def broadcast(message, addr = None):       
@@ -21,6 +31,7 @@ def disconnect(addr):
     name = client_info[addr][1]
     leaveMessage = '>>' + name + ' has left'
     print(f'Disconnection by {name} from {addr}')
+    logger(f'{addr} disconnected from server')
     client_info.pop(addr)
     # Sends a leave message to all other clients
     broadcast(leaveMessage)
@@ -43,6 +54,7 @@ def list_files(addr):
 def download(addr, filename):
     conn = client_info[addr][0]
     print('Started Sending Data')
+    logger(f'Start download of {filename} to {addr}')
 
     # Flag for starting a download
     conn.sendall(f'<d> {filename}'.encode())
@@ -60,6 +72,7 @@ def download(addr, filename):
     # Flag for the end of a download
     conn.sendall(f'</d>'.encode())
     print('Finished Sending Data')
+    logger(f'Finish download of {filename} to {addr}')
 
 def active_client(addr):
     targetaddr = None
@@ -75,6 +88,7 @@ def active_client(addr):
 
         #In case of forceful disconnection
         except socket.error:
+            logger(f'Socket error from {addr}')
             disconnect(addr)
             conn.close()
             return
@@ -99,6 +113,7 @@ def active_client(addr):
 
                     conn.sendall(f'Directly Connected to {client_info[temp][1]}'.encode())
                     targetaddr = temp
+                    logger(f'{addr} unicasting to {targetaddr}')
                 
             except ValueError:  # If the port number isn't a number
                 conn.sendall('Invalid command'.encode())
@@ -119,6 +134,7 @@ def active_client(addr):
                     conn.sendall("File doesn't exist".encode())
                     continue
 
+                logger(f'{addr} request to download {file}')
                 download(addr, file)
                 
             except IndexError:  # If there are too little parameters
@@ -128,6 +144,7 @@ def active_client(addr):
         # Client requests to broadcast
         if data == '/broad':
             targetaddr = None
+            logger(f'{addr} switched to broadcast mode')
             continue
 
         # Client requests a list of all the connected clients
@@ -138,10 +155,12 @@ def active_client(addr):
                 message += f'{client_info[client][1]} at address {client}\n'
 
             conn.sendall(message.encode()) 
+            logger(f'{addr} requested a list of members')
             continue
 
         if data == '/files':
             list_files(addr)
+            logger(f'{addr} requested a list of files')
             continue
 
         # Unicast to the selected target if it still exists
@@ -150,14 +169,18 @@ def active_client(addr):
                 print(f'Sending data to {client_info[targetaddr][1]} at {targetaddr}')
                 data = f'{name} (whisper)>>' + data
                 client_info[targetaddr][0].sendall(data.encode()) 
+                logger(f'{addr} sent {data} to {targetaddr}')
                 continue
             conn.sendall(">>Unicast target doesn't exist, switching to broadcast".encode())
             targetaddr = None
+            logger(f'{addr} switched to broadcast mode')
+            continue
 
         # Broadcast if the message wasn't a command and there isn't a unicast target
         print(f'sending data back to everyone')
         data = f'{name}>>' + data
         broadcast(data, addr)
+        logger(f'{addr} sent {data} to all members')
 
     # If the client requests to disconnect
     conn.sendall(f'>>Goodbye {name}'.encode())
@@ -179,6 +202,8 @@ def init():
     s.bind(('', PORT))
     s.listen(5)
 
+    logger('SERVER START')
+
     # Keep waiting for new connections
     while True:
         print("Waiting for Connection")
@@ -193,6 +218,8 @@ def init():
         conn.sendall(f'>>Welcome {name}!'.encode())
         welcMessage = '>>' + name + ' has joined'
         broadcast(welcMessage)
+
+        logger(f'{name} from {addr} connected to server')
         
         client_info.update({addr:info})
 
