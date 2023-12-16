@@ -1,9 +1,10 @@
 import socket
 import sys
 import os
+import time
 from threading import Thread
 
-BUFFER = 4096
+BUFFER = 1024
 
 def connect():
     USER = sys.argv[1] # The client's name
@@ -12,7 +13,10 @@ def connect():
 
     # Create a socket and connect to the server
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
     s.connect((HOST, PORT))
+
+
     # Initialise by sending the user's name
     s.sendall(USER.encode())
 
@@ -44,6 +48,7 @@ def sender(s):
 
 def receiver(s, USER):
     f = None
+    down_buff = b''
     # Keep receiving messages until an error or notified of an exit
     while True:
         try:
@@ -52,11 +57,13 @@ def receiver(s, USER):
 
             if f:   # If in download mode
                 if bytes_read.endswith('</d>'.encode()):    # Exit download mode if the end download flag is found 
+                    f.write(down_buff)
                     f.close()
                     f = None
+                    down_buff = b''
                     continue
-
-                f.write(bytes_read)
+                
+                down_buff += bytes_read
 
             else:   # If in message mode
                 data = bytes_read.decode()
@@ -68,7 +75,7 @@ def receiver(s, USER):
                 # Enter download mode if the download flag is found
                 if data.startswith('<d>'):
                     # Find the target file name
-                    file = data.split()[1]
+                    file = ' '.join(data.split()[1:])
                     print(f'>>Downloading {file}')
 
                     # Create the client download folder if it doesn't already exist
