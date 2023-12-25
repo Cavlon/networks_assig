@@ -5,7 +5,7 @@ import select
 from datetime import datetime
 
 BUFFER = 1024
-PORT = int(sys.argv[1])
+PORT = 0
 
 # Each entry holds a 2-element list, element 1 is a tuple with (socket, name), element 2 is the address of the unicast target
 client_info = dict()
@@ -204,6 +204,16 @@ def active_client(sock):
     logger(f"{addr} sent '{data}' to all members")
 
 def init():
+    global PORT
+    try:
+        PORT = int(sys.argv[1])
+    except ValueError:
+        print('Invalid port number')
+        return
+    except IndexError:
+        print('Port number not specified')
+        return
+
     # Creates the download folder if it doesn't already exist
     path = './download'
     if not os.path.exists(path):
